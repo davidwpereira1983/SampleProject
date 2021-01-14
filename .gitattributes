@@ -1,0 +1,17 @@
+# explicitly set default behavior
+
+* text=auto
+
+# ensure appropriate line endings for windows / visual studio use
+
+*.sln text eol=crlf
+*.csproj text eol=crlf
+*.cs text eol=crlf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.dependencies text eol=crlf
+*.config text eol=crlf
+*.plugin text eol=crlf
+*.sql text eol=crlf
+*.md text eol=lf
+
