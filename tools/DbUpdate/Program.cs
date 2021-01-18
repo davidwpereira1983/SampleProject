@@ -1,57 +1,68 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Reflection;
+using Azure;
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
-using Microsoft.AspNetCore.Hosting;
+using DbUp;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
-using Serilog;
 
-namespace Company.TestProject.WebApi
+namespace Company.TestProject.DbUpdate
 {
     public class Program
     {
         public static int Main(string[] args)
         {
+            Console.WriteLine("***********************************************************");
+            Console.WriteLine("                     DB UPDATE                             ");
+            Console.WriteLine("***********************************************************");
+
             var baseDirectory = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
-            IConfiguration configuration = BuildConfiguration(args, baseDirectory);
+            var configuration = BuildConfiguration(args, baseDirectory);
 
-            Log.Logger = new LoggerConfiguration()
-                .ReadFrom.Configuration(configuration)
-                .Enrich.With<TraceIdentifierEnricher>()
-                .CreateLogger();
+            var connectionString = configuration.GetConnectionString("Main");
 
-            try
+            Console.WriteLine($" ConnectionString: {connectionString}");
+            string databaseScriptFolders = null;
+
+            if (args != null && args.Length > 0)
             {
-                Log.Information("Getting the motors running...");
-                CreateHostBuilder(args, baseDirectory).Build().Run();
-                return 0;
+                databaseScriptFolders = Path.GetFullPath(args[0]);
             }
-            catch (Exception ex)
+            else
             {
-                Log.Fatal(ex, "Host terminated unexpectedly");
-                return 1;
+                databaseScriptFolders = Path.GetFullPath(Path.Combine(baseDirectory, "..\\..\\..\\..\\..\\Database\\"));
             }
-            finally
+
+            Console.WriteLine($"Database script folder: {databaseScriptFolders}");
+
+            var upgrader =
+                DeployChanges.To
+                    .SqlDatabase(connectionString)
+                    .WithScriptsFromFileSystem(databaseScriptFolders)
+                    .WithTransaction()
+                    .LogToConsole()
+                    .Build();
+
+            var result = upgrader.PerformUpgrade();
+
+            if (!result.Successful)
             {
-                Log.CloseAndFlush();
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(result.Error);
+                Console.ResetColor();
+#if DEBUG
+                Console.ReadLine();
+#endif
+                return -1;
             }
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("Success!");
+            Console.ResetColor();
+            return 0;
         }
-
-        public static IHostBuilder CreateHostBuilder(string[] args, string baseDirectory) =>
-            Host.CreateDefaultBuilder(args)
-                .UseSerilog()
-                .ConfigureWebHostDefaults(webBuilder =>
-                {
-                    webBuilder.UseStartup<Startup>()
-                    .ConfigureAppConfiguration((builderContext, config) =>
-                    {
-                        var env = builderContext.HostingEnvironment;
-                        SetupConfigurationBuilder(args, baseDirectory, env.EnvironmentName, config);
-                    });
-                });
 
         private static IConfigurationRoot BuildConfiguration(string[] args, string baseDirectory)
         {
@@ -61,14 +72,6 @@ namespace Company.TestProject.WebApi
             Console.WriteLine($"Configuration path: {baseDirectory}");
 
             var builder = new ConfigurationBuilder();
-            SetupConfigurationBuilder(args, baseDirectory, environment, builder);
-
-            var configuration = builder.Build();
-            return configuration;
-        }
-
-        private static void SetupConfigurationBuilder(string[] args, string baseDirectory, string environment, IConfigurationBuilder builder)
-        {
             builder
                 .SetBasePath(baseDirectory)
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
@@ -92,6 +95,9 @@ namespace Company.TestProject.WebApi
                         ReloadInterval = TimeSpan.FromMinutes(azureConfiguration.ReloadIntervalInMinutes)
                     });
             }
+
+            var configuration = builder.Build();
+            return configuration;
         }
     }
 }

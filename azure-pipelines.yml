@@ -1,23 +1,38 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
-trigger:
-- develop
-- main
-
-pool:
-  vmImage: 'ubuntu-latest'
-
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
-
-- script: echo Hello, David!
-  displayName: 'Run a one-line script 2'
-
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+stages:
+  - stage: ubuntu_latest
+    displayName: 'ubuntu-latest'
+    dependsOn: [  ]
+    pool:
+      vmImage: 'ubuntu-latest'
+    jobs:
+      - job: Compile
+        displayName: '⚙️ Compile'
+        dependsOn: [  ]
+        steps:
+          - task: CmdLine@2
+            inputs:
+              script: './build.cmd Restore Compile --skip'
+      - job: Test
+        displayName: '🚦 Test 🧩'
+        dependsOn: [ Compile ]
+        strategy:
+          parallel: 2
+        steps:
+          - task: CmdLine@2
+            inputs:
+              script: './build.cmd Test --skip --test-partition $(System.JobPositionInPhase)'
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: test-results
+              pathtoPublish: 'output/test-results'
+      - job: Pack
+        displayName: '📦 Pack'
+        dependsOn: [ Compile ]
+        steps:
+          - task: CmdLine@2
+            inputs:
+              script: './build.cmd Pack --skip'
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: packages
+              pathtoPublish: 'output/packages'
